@@ -8,20 +8,29 @@
 </head>
 <body>
     <header>
-        <h1>Traffic Analysis & Routing Demo</h1>
+        <h1>Traffic Analysis &amp; Routing Demo</h1>
         <p>Advanced AI Final Project - YOLO Detection + GNN Routing</p>
     </header>
 
     <main>
+        <!-- Step 1: Upload -->
         <section id="file-upload">
             <h2>Upload Traffic Video</h2>
-            <input type="file" id="videoInput" accept="video/*" multiple>
+            <p>Upload any VisDrone VID sequence MP4. The pipeline will run YOLO detection,
+               cluster vehicle positions into road zones, and build a routing graph.</p>
+            <input type="file" id="videoInput" accept="video/*">
             <button id="processBtn">Process Video</button>
             <div id="uploadStatus"></div>
+            <div id="progressBar" class="hidden">
+                <div id="progressFill"></div>
+                <span id="progressText">Processing...</span>
+            </div>
         </section>
 
+        <!-- Step 2: Original vs YOLO side by side -->
         <section id="video-comparison" class="hidden">
-            <h2>Video Comparison</h2>
+            <h2>Step 1 — YOLO Vehicle Detection</h2>
+            <p>Original footage alongside YOLO11x detections. Fine-tuned on VisDrone for aerial vehicle detection.</p>
             <div class="video-container">
                 <div class="video-wrapper">
                     <h3>Original Video</h3>
@@ -32,44 +41,63 @@
                     <video id="yoloVideo" controls></video>
                 </div>
             </div>
-            <button id="nextStepBtn">Show Graph Analysis</button>
+            <div class="sync-controls">
+                <button id="syncPlayBtn">&#9654; Play Both</button>
+                <button id="syncPauseBtn">&#9646;&#9646; Pause Both</button>
+                <button id="syncResetBtn">&#8635; Reset</button>
+            </div>
+            <button id="nextStepBtn">Show Zone Graph &rarr;</button>
         </section>
 
+        <!-- Step 3: Zone graph overlaid on video -->
         <section id="graph-analysis" class="hidden">
-            <h2>Graph Analysis</h2>
+            <h2>Step 2 — Road Zone Detection</h2>
+            <p>KMeans clustering auto-generates road zones from vehicle positions.
+               Node color indicates predicted congestion: <span style="color:#2ecc71">■ Low</span>
+               <span style="color:#f39c12">■ Medium</span>
+               <span style="color:#e74c3c">■ High</span></p>
             <div class="graph-container">
                 <div class="graph-wrapper">
                     <h3>Traffic Graph with Nodes</h3>
-                    <canvas id="trafficGraph" width="800" height="600"></canvas>
+                    <div class="canvas-container">
+                        <canvas id="trafficGraph" width="800" height="600"></canvas>
+                    </div>
                 </div>
             </div>
-            <button id="routingBtn">Interactive Routing</button>
+            <button id="routingBtn">Interactive Routing &rarr;</button>
         </section>
 
+        <!-- Step 4: Interactive routing -->
         <section id="routing-demo" class="hidden">
-            <h2>Interactive Routing</h2>
+            <h2>Step 3 — Interactive Routing</h2>
+            <p>Click a <strong>source node</strong> then a <strong>destination node</strong> on the graph.
+               The GAT model predicts congestion scores and Dijkstra finds the optimal route.</p>
             <div class="routing-container">
                 <div class="routing-controls">
                     <h3>Select Start and Destination</h3>
-                    <p>Click on nodes in the graph below to select start and destination points.</p>
+                    <p>Click on nodes in the graph to select start and destination points.</p>
                     <div id="routeInfo">
                         <p><strong>Start Node:</strong> <span id="startNode">None</span></p>
                         <p><strong>Destination Node:</strong> <span id="destNode">None</span></p>
                     </div>
                     <button id="calculateRoutesBtn" disabled>Calculate Routes</button>
+                    <button id="clearSelectionBtn">Clear Selection</button>
                 </div>
                 <div class="routing-results">
                     <div class="route-comparison">
-                        <div class="route-option">
-                            <h4>GCN Route</h4>
+                        <div class="route-option gnn-route">
+                            <h4>GAT Route <span class="badge gnn">Congestion-Aware</span></h4>
                             <div id="gcnRoute" class="route-display"></div>
                         </div>
-                        <div class="route-option">
-                            <h4>Baseline Route</h4>
+                        <div class="route-option baseline-route">
+                            <h4>Baseline Route <span class="badge baseline">Uniform Weights</span></h4>
                             <div id="baselineRoute" class="route-display"></div>
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="routing-graph-wrapper">
+                <canvas id="routingGraph" width="800" height="600"></canvas>
             </div>
         </section>
     </main>
