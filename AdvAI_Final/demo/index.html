@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Analysis Demo - AdvAI Final Project</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Traffic Analysis &amp; Routing Demo</h1>
+        <p>Advanced AI Final Project - YOLO Detection + GNN Routing</p>
+        <p style="font-size:0.9rem; color:#555; margin-top:0.25rem;">
+            Run: <code>bash launch.sh</code> — Access at <code>https://ondemand.osc.edu/node/p0304.ten.osc.edu/5000/</code>
+        </p>
+    </header>
+
+    <main>
+        <!-- Upload -->
+        <section id="file-upload">
+            <h2>Upload Traffic Video</h2>
+            <p>Upload any VisDrone VID sequence MP4. The pipeline will run YOLO detection,
+               cluster vehicle positions into road zones, and build a routing graph.</p>
+            <input type="file" id="videoInput" accept="video/*">
+            <button id="processBtn">Process Video</button>
+            <div id="uploadStatus"></div>
+            <div id="progressBar" class="hidden">
+                <div id="progressFill"></div>
+                <span id="progressText">Processing...</span>
+            </div>
+        </section>
+
+        <!-- Step 1: Original vs YOLO -->
+        <section id="video-comparison" class="hidden">
+            <h2>Step 1 — YOLO Vehicle Detection</h2>
+            <p>Original footage alongside YOLO11x detections. Fine-tuned on VisDrone for aerial vehicle detection.</p>
+            <div class="video-container">
+                <div class="video-wrapper">
+                    <h3>Original Video</h3>
+                    <canvas id="originalCanvas" width="640" height="360"></canvas>
+                </div>
+                <div class="video-wrapper">
+                    <h3>YOLO Processed Video</h3>
+                    <canvas id="yoloCanvas" width="640" height="360"></canvas>
+                </div>
+            </div>
+            <div class="sync-controls">
+                <button id="syncPlayBtn">&#9654; Play Both</button>
+                <button id="syncPauseBtn">&#9646;&#9646; Pause Both</button>
+                <button id="syncResetBtn">&#8635; Reset</button>
+            </div>
+            <button id="nextStepBtn">Show Zone Analysis &rarr;</button>
+        </section>
+
+        <!-- Step 2: Animated graph overlay on video -->
+        <section id="graph-animation" class="hidden">
+            <h2>Step 2 — Live Zone Congestion</h2>
+            <p>Road zones detected by KMeans clustering on vehicle positions. Node color shows
+               congestion level at each frame:
+               <span style="color:#2ecc71">&#9632; Low</span>
+               <span style="color:#f39c12">&#9632; Medium</span>
+               <span style="color:#e74c3c">&#9632; High</span>
+            </p>
+            <div style="display:flex; justify-content:center;">
+                <div style="text-align:center;">
+                    <canvas id="graphAnimCanvas" width="800" height="450"></canvas>
+                    <div class="sync-controls" style="margin-top:1rem;">
+                        <button id="graphPlayBtn">&#9654; Play</button>
+                        <button id="graphPauseBtn">&#9646;&#9646; Pause</button>
+                        <button id="graphResetBtn">&#8635; Reset</button>
+                    </div>
+                </div>
+            </div>
+            <button id="nextStepBtn2">Show Static Graph &rarr;</button>
+        </section>
+
+        <!-- Step 3: Static zone graph -->
+        <section id="graph-analysis" class="hidden">
+            <h2>Step 3 — Road Zone Graph</h2>
+            <p>Final zone graph with GAT-predicted congestion scores overlaid on aerial image.
+               Node labels show relative congestion (0 = lowest, 1 = highest in this scene).</p>
+            <div class="graph-container">
+                <div class="graph-wrapper">
+                    <h3>Traffic Graph with Nodes</h3>
+                    <div class="canvas-container">
+                        <canvas id="trafficGraph" width="800" height="600"></canvas>
+                    </div>
+                </div>
+            </div>
+            <button id="routingBtn">Interactive Routing &rarr;</button>
+        </section>
+
+        <!-- Step 4: Interactive routing -->
+        <section id="routing-demo" class="hidden">
+            <h2>Step 4 — Interactive Routing</h2>
+            <p>Click a <strong>source node</strong> then a <strong>destination node</strong> on the graph.
+               The GAT model predicts congestion scores and Dijkstra finds the optimal route.</p>
+            <div class="routing-container">
+                <div class="routing-controls">
+                    <h3>Select Start and Destination</h3>
+                    <p>Click on nodes in the graph to select start and destination points.</p>
+                    <div id="routeInfo">
+                        <p><strong>Start Node:</strong> <span id="startNode">None</span></p>
+                        <p><strong>Destination Node:</strong> <span id="destNode">None</span></p>
+                    </div>
+                    <button id="calculateRoutesBtn" disabled>Calculate Routes</button>
+                    <button id="clearSelectionBtn">Clear Selection</button>
+                </div>
+                <div class="routing-results">
+                    <div class="route-comparison">
+                        <div class="route-option gnn-route">
+                            <h4>GAT Route <span class="badge gnn">Congestion-Aware</span></h4>
+                            <div id="gcnRoute" class="route-display"></div>
+                        </div>
+                        <div class="route-option baseline-route">
+                            <h4>Baseline Route <span class="badge baseline">Uniform Weights</span></h4>
+                            <div id="baselineRoute" class="route-display"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="routing-graph-wrapper">
+                <canvas id="routingGraph" width="800" height="600"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
