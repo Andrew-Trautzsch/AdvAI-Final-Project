@@ -46,38 +46,51 @@ class TrafficDemo {
         this.showStatus('Processing video with YOLO... This may take a moment.', 'info');
         this.showProgressBar(true);
 
-        // Simulate processing with simulated progress
         let progress = 0;
         const progressInterval = setInterval(() => {
-            progress += Math.random() * 15;
-            if (progress > 100) progress = 100;
+            progress += Math.random() * 12;
+            if (progress > 90) progress = 90;
             this.updateProgressBar(progress);
         }, 300);
 
-        // Create video URLs from the uploaded file
-        setTimeout(() => {
+        try {
+            const formData = new FormData();
+            formData.append('video', this.videoFile);
+
+            const response = await fetch('/process', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(errorBody || response.statusText);
+            }
+
+            const blob = await response.blob();
+            const processedUrl = URL.createObjectURL(blob);
+            this.loadAndDisplayVideos(processedUrl);
+            this.showVideoComparison();
+            this.showStatus('Video processed successfully!', 'success');
+        } catch (error) {
+            this.showStatus(`Processing failed: ${error.message}`, 'error');
+        } finally {
             clearInterval(progressInterval);
             this.updateProgressBar(100);
-            this.loadAndDisplayVideos();
-            setTimeout(() => {
-                this.showVideoComparison();
-                this.showProgressBar(false);
-                this.showStatus('Video processed successfully!', 'success');
-            }, 500);
-        }, 2000);
+            this.showProgressBar(false);
+        }
     }
 
-    loadAndDisplayVideos() {
-        // Create object URLs for the video
-        const videoUrl = URL.createObjectURL(this.videoFile);
+    loadAndDisplayVideos(processedVideoUrl) {
+        // Create object URLs for the uploaded file and the processed result.
+        const originalUrl = URL.createObjectURL(this.videoFile);
+        const yoloUrl = processedVideoUrl || originalUrl;
         
         const originalVideo = document.getElementById('originalVideo');
         const yoloVideo = document.getElementById('yoloVideo');
         
-        originalVideo.src = videoUrl;
-        // yoloVideo would be the processed video from backend with flask
-        // Currently using the original video
-        yoloVideo.src = videoUrl;
+        originalVideo.src = originalUrl;
+        yoloVideo.src = yoloUrl;
         
         this.syncedVideos.original = originalVideo;
         this.syncedVideos.yolo = yoloVideo;
