@@ -231,6 +231,87 @@ canvas {
     border: 1px solid #bee5eb;
 }
 
+/* Progress Bar */
+#progressBar {
+    margin-top: 1.5rem;
+    background: #ecf0f1;
+    border-radius: 10px;
+    overflow: hidden;
+    height: 30px;
+    position: relative;
+}
+
+#progressFill {
+    background: linear-gradient(90deg, #3498db, #2ecc71);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#progressText {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #2c3e50;
+    font-weight: bold;
+    font-size: 0.9rem;
+    width: 100%;
+    text-align: center;
+}
+
+/* Sync Controls */
+.sync-controls {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.canvas-container {
+    display: flex;
+    justify-content: center;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.routing-graph-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 2rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.3rem 0.6rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+    font-weight: bold;
+}
+
+.badge.gnn {
+    background: #2ecc71;
+    color: white;
+}
+
+.badge.baseline {
+    background: #3498db;
+    color: white;
+}
+
+.routing-results {
+    margin-top: 1rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .video-container {
