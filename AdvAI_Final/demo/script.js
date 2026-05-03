@@ -28,8 +28,7 @@ class TrafficDemo {
         document.getElementById('processBtn').addEventListener('click',         () => this.processVideo());
         document.getElementById('videoInput').addEventListener('change',        (e) => this.handleFileSelect(e));
         document.getElementById('nextStepBtn').addEventListener('click',        () => this.showGraphAnimation());
-        document.getElementById('nextStepBtn2').addEventListener('click',       () => this.showGraphAnalysis());
-        document.getElementById('routingBtn').addEventListener('click',         () => this.showRoutingDemo());
+        document.getElementById('nextStepBtn2').addEventListener('click',       () => this.showRoutingDemo());
         document.getElementById('calculateRoutesBtn').addEventListener('click', () => this.calculateRoutes());
         document.getElementById('clearSelectionBtn').addEventListener('click',  () => this.clearSelection());
 
@@ -44,8 +43,7 @@ class TrafficDemo {
         document.getElementById('graphResetBtn').addEventListener('click', () => this.resetGraphAnimation());
 
         // Canvas clicks
-        document.getElementById('trafficGraph').addEventListener('click', (e) => this.handleCanvasClick(e, false));
-        document.getElementById('routingGraph').addEventListener('click',  (e) => this.handleCanvasClick(e, true));
+        document.getElementById('routingGraph').addEventListener('click',  (e) => this.handleCanvasClick(e));
     }
 
     handleFileSelect(event) {
@@ -400,15 +398,14 @@ class TrafficDemo {
     }
 
     // ── Node selection ──────────────────────────────────────────────────────────
-    handleCanvasClick(event, isRoutingCanvas = false) {
+    handleCanvasClick(event) {
         if (!this.graphData) return;
-        const canvasId = isRoutingCanvas ? 'routingGraph' : 'trafficGraph';
-        const canvas   = document.getElementById(canvasId);
-        const rect     = canvas.getBoundingClientRect();
-        const scaleX   = canvas.width  / rect.width;
-        const scaleY   = canvas.height / rect.height;
-        const x        = (event.clientX - rect.left) * scaleX;
-        const y        = (event.clientY - rect.top)  * scaleY;
+        const canvas = document.getElementById('routingGraph');
+        const rect   = canvas.getBoundingClientRect();
+        const scaleX = canvas.width  / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x      = (event.clientX - rect.left) * scaleX;
+        const y      = (event.clientY - rect.top)  * scaleY;
 
         const clicked = this.graphData.nodes.find(n =>
             Math.sqrt((x - n.x) ** 2 + (y - n.y) ** 2) <= n.size + 5
@@ -420,8 +417,7 @@ class TrafficDemo {
             else if (this.selectedNodes.start === clicked.id)                        this.selectedNodes.start = null;
             else if (this.selectedNodes.destination === clicked.id)                  this.selectedNodes.destination = null;
             this.updateNodeSelection();
-            if (isRoutingCanvas) this.drawRoutingGraph();
-            else                 this.drawGraph();
+            this.drawRoutingGraph();
         }
     }
 

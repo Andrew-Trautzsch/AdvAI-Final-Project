@@ -71,28 +71,12 @@
                     </div>
                 </div>
             </div>
-            <button id="nextStepBtn2">Show Static Graph &rarr;</button>
+            <button id="nextStepBtn2">Interactive Routing &rarr;</button>
         </section>
 
-        <!-- Step 3: Static zone graph -->
-        <section id="graph-analysis" class="hidden">
-            <h2>Step 3 — Road Zone Graph</h2>
-            <p>Final zone graph with GAT-predicted congestion scores overlaid on aerial image.
-               Node labels show relative congestion (0 = lowest, 1 = highest in this scene).</p>
-            <div class="graph-container">
-                <div class="graph-wrapper">
-                    <h3>Traffic Graph with Nodes</h3>
-                    <div class="canvas-container">
-                        <canvas id="trafficGraph" width="800" height="600"></canvas>
-                    </div>
-                </div>
-            </div>
-            <button id="routingBtn">Interactive Routing &rarr;</button>
-        </section>
-
-        <!-- Step 4: Interactive routing -->
+        <!-- Step 3: Interactive routing -->
         <section id="routing-demo" class="hidden">
-            <h2>Step 4 — Interactive Routing</h2>
+            <h2>Step 3 — Interactive Routing</h2>
             <p>Click a <strong>source node</strong> then a <strong>destination node</strong> on the graph.
                The GAT model predicts congestion scores and Dijkstra finds the optimal route.</p>
             <div class="routing-container">
