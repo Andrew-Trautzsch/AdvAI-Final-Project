@@ -125,7 +125,7 @@ app.wsgi_app = PrefixMiddleware(app.wsgi_app)
 def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
     """
     Perform clustering using either traditional k-means or new macroblock approach.
-    Returns: (cluster_centers, zone_info, comparison_stats)
+    Returns: (cluster_centers, zone_info, comparison_stats, macroblock_data)
     """
     if not use_macroblocks:
         # ── Traditional K-Means Clustering ─────────────────────────────────────
@@ -172,7 +172,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             }
         }
 
-        return cluster_centers, zone_info, comparison_stats
+        return cluster_centers, zone_info, comparison_stats, None
 
     else:
         # ── Macroblock-based Clustering ───────────────────────────────────────
@@ -198,7 +198,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             if not vehicles_in_macro:
                 continue
 
-            total_weight = sum(v['weight'] for v in vehicles_in_macro)
+                total_weight = sum(v['weight'] for v in vehicles_in_macro)
             weighted_centroid = np.average(
                 [v['center'] for v in vehicles_in_macro],
                 weights=[v['weight'] for v in vehicles_in_macro],
@@ -314,7 +314,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             }
         }
 
-        return cluster_centers, merged_zones, comparison_stats
+        return cluster_centers, merged_zones, comparison_stats, macroblock_data
 
 @app.route('/')
 def index():
@@ -460,7 +460,7 @@ def process_video():
         if result[0] is None:
             return jsonify({'error': result[2]['error']}), 400
 
-        cluster_centers, zone_info, comparison_stats = result
+        cluster_centers, zone_info, comparison_stats, macroblock_data = result
         n_clusters = len(cluster_centers)
 
         print(f"[{session_id}] Clustering complete:")
@@ -473,36 +473,97 @@ def process_video():
             print(f"  Zone types: {comparison_stats['zone_types']}")
 
         # ── Build KNN graph with macroblock-aware edge weights ─────────────────
-        G = nx.Graph()
-        for i, zone in enumerate(zone_info if USE_MACROBLOCKS else [{'centroid': center} for center in cluster_centers]):
-            G.add_node(i, pos=[float(zone['centroid'][0]), float(zone['centroid'][1])])
+        if USE_MACROBLOCKS and macroblock_data:
+            # Use macroblocks for graph construction
+            G = nx.Graph()
+            for macro in macroblock_data:
+                G.add_node(macro['id'], pos=[float(macro['centroid'][0]), float(macro['centroid'][1])])
 
-        # Connect zones with weights based on relationships and congestion
-        for i in range(n_clusters):
-            dists = []
-            for j in range(n_clusters):
-                if i != j:
-                    distance = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
+            # Group adjacent congested macroblocks
+            congested_groups = []
+            processed = set()
+
+            for i, macro1 in enumerate(macroblock_data):
+                if i in processed or macro1['congestion'] < 0.7:
+                    continue
+
+                group = [macro1]
+                processed.add(i)
+
+                # Find adjacent congested macroblocks
+                for j, macro2 in enumerate(macroblock_data):
+                    if j in processed or macro2['congestion'] < 0.7:
+                        continue
+
+                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
+                    if distance < 300:  # Adjacent threshold
+                        group.append(macro2)
+                        processed.add(j)
+
+                if len(group) > 1:
+                    congested_groups.append(group)
+
+            # Connect macroblocks with congestion-aware edge colors
+            for i in range(len(macroblock_data)):
+                for j in range(i+1, len(macroblock_data)):
+                    macro1 = macroblock_data[i]
+                    macro2 = macroblock_data[j]
+                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
                     base_weight = 1.0 / (distance + 1e-6)
 
-                    if USE_MACROBLOCKS:
-                        # Macroblock-aware weighting
-                        macro_boost = 1.2  # Default boost
-                        congestion_penalty = 1.0
-                        if zone_info[i]['congestion'] > 0.7 or zone_info[j]['congestion'] > 0.7:
-                            congestion_penalty = 0.7
-                        final_weight = base_weight * macro_boost * congestion_penalty
+                    # Check if both are in the same congested group
+                    in_same_group = False
+                    for group in congested_groups:
+                        if macro1 in group and macro2 in group:
+                            in_same_group = True
+                            break
+
+                    if in_same_group:
+                        # Stronger connection within congested groups
+                        weight = base_weight * 2.0
+                        G.add_edge(macro1['id'], macro2['id'], weight=weight, color='red', congested=True)
                     else:
-                        # Traditional: simple inverse distance
-                        final_weight = base_weight
+                        # Normal connection
+                        weight = base_weight
+                        # Make edge red if either macroblock is congested
+                        is_congested = macro1['congestion'] > 0.7 or macro2['congestion'] > 0.7
+                        G.add_edge(macro1['id'], macro2['id'], weight=weight,
+                                 color='red' if is_congested else 'white', congested=is_congested)
 
-                    dists.append((final_weight, j))
+            cluster_centers = np.array([macro['centroid'] for macro in macroblock_data])
+            zone_info = macroblock_data
+        else:
+            # Traditional method
+            G = nx.Graph()
+            for i, zone in enumerate(zone_info if USE_MACROBLOCKS else [{'centroid': center} for center in cluster_centers]):
+                G.add_node(i, pos=[float(zone['centroid'][0]), float(zone['centroid'][1])])
 
-            # Connect to K nearest neighbors
-            dists.sort(reverse=True)
-            for weight, j in dists[:KNN_K]:
-                if not G.has_edge(i, j):
-                    G.add_edge(i, j, weight=weight)
+            # Connect zones with weights based on relationships and congestion
+            for i in range(n_clusters):
+                dists = []
+                for j in range(n_clusters):
+                    if i != j:
+                        distance = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
+                        base_weight = 1.0 / (distance + 1e-6)
+
+                        if USE_MACROBLOCKS:
+                            # Macroblock-aware weighting
+                            macro_boost = 1.2  # Default boost
+                            congestion_penalty = 1.0
+                            if zone_info[i]['congestion'] > 0.7 or zone_info[j]['congestion'] > 0.7:
+                                congestion_penalty = 0.7
+                            final_weight = base_weight * macro_boost * congestion_penalty
+                        else:
+                            # Traditional: simple inverse distance
+                            final_weight = base_weight
+
+                        dists.append((final_weight, j))
+
+                # Connect to K nearest neighbors
+                dists.sort(reverse=True)
+                for weight, j in dists[:KNN_K]:
+                    if not G.has_edge(i, j):
+                        G.add_edge(i, j, weight=weight)
 
         # Ensure graph connectivity with minimum spanning tree if needed
         if not nx.is_connected(G):
@@ -583,7 +644,17 @@ def process_video():
             for u, v in graph_edges_list:
                 p1 = (int(cluster_centers[u][0]), int(cluster_centers[u][1]))
                 p2 = (int(cluster_centers[v][0]), int(cluster_centers[v][1]))
-                cv2.line(frame, p1, p2, (255, 255, 255), 2, cv2.LINE_AA)
+
+                # Get edge color (default to white if not specified)
+                edge_data = G.get_edge_data(u, v, {})
+                edge_color = edge_data.get('color', 'white')
+
+                if edge_color == 'red':
+                    color = (0, 0, 255)  # Red for congested edges
+                else:
+                    color = (255, 255, 255)  # White for normal edges
+
+                cv2.line(frame, p1, p2, color, 2, cv2.LINE_AA)
 
             # Draw nodes colored by current timestep congestion
             zone_scores = raw_scores[:, t]
@@ -592,7 +663,14 @@ def process_video():
                 color  = zone_bgr(zone_scores[z])
                 cv2.circle(frame, (cx, cy), 16, color, -1)
                 cv2.circle(frame, (cx, cy), 16, (255, 255, 255), 2, cv2.LINE_AA)
-                cv2.putText(frame, f'Z{z}', (cx - 9, cy + 5),
+
+                # Use macroblock ID if available, otherwise zone number
+                if USE_MACROBLOCKS and macroblock_data and z < len(macroblock_data):
+                    label = f'M{macroblock_data[z]["id"]}'
+                else:
+                    label = f'Z{z}'
+
+                cv2.putText(frame, label, (cx - 9, cy + 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.38,
                             (255, 255, 255), 1, cv2.LINE_AA)
 
@@ -624,16 +702,21 @@ def process_video():
         x_range = xs.max() - xs.min() if xs.max() != xs.min() else 1
         y_range = ys.max() - ys.min() if ys.max() != ys.min() else 1
 
-        nodes = [
-            {
+        nodes = []
+        for i in range(n_clusters):
+            node_data = {
                 'id':         i,
                 'x':          float(pad + (cluster_centers[i][0] - xs.min()) / x_range * (800 - 2*pad)),
                 'y':          float(pad + (cluster_centers[i][1] - ys.min()) / y_range * (600 - 2*pad)),
                 'congestion': float(gnn_scores[i]),
                 'size':       15
             }
-            for i in range(n_clusters)
-        ]
+
+            # Add macroblock ID if available
+            if USE_MACROBLOCKS and macroblock_data and i < len(macroblock_data):
+                node_data['macroblock_id'] = macroblock_data[i]['id']
+
+            nodes.append(node_data)
 
         graph_edges = [{'src': int(u), 'dst': int(v)} for u, v in G.edges()]
         adj         = defaultdict(list)
