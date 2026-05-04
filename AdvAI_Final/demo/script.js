@@ -4,10 +4,11 @@
 class TrafficDemo {
     constructor() {
         this.selectedNodes = { start: null, destination: null };
-        this.graphData     = null;
-        this.videoFile     = null;
-        this.sessionId     = null;
-        this.bgImage       = null;
+        this.graphData      = null;
+        this.clusteringStats = null;
+        this.videoFile      = null;
+        this.sessionId      = null;
+        this.bgImage        = null;
 
         // Step 1 animation (original + yolo)
         this.origFrames  = [];
@@ -90,9 +91,10 @@ class TrafficDemo {
             }
 
             const data     = await response.json();
-            this.sessionId = data.session_id;
-            this.graphData = data.graph;
-            this.animFps   = data.fps || 6;
+            this.sessionId      = data.session_id;
+            this.graphData      = data.graph;
+            this.clusteringStats = data.clustering_stats || null;
+            this.animFps        = data.fps || 6;
 
             // Load background image for static graph canvas
             if (data.bg_image) {
@@ -229,9 +231,9 @@ class TrafficDemo {
     }
 
     displayClusteringStats() {
-        if (!this.graphData || !this.graphData.clustering_stats) return;
+        const stats = this.clusteringStats;
+        if (!stats) return;
 
-        const stats = this.graphData.clustering_stats;
         const statsDiv = document.getElementById('clusteringStats');
         const contentDiv = document.getElementById('statsContent');
 

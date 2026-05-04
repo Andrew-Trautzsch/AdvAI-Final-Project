@@ -23,7 +23,7 @@ from ultralytics import YOLO
 from torch_geometric.nn import GATConv
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.expanduser('~/AdvAI_Final')
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEMO_DIR   = os.path.join(BASE_DIR, 'demo')
 MODELS_DIR = os.path.join(BASE_DIR, 'detection', 'models')
 UPLOAD_DIR = os.path.join(DEMO_DIR, 'uploads')
@@ -87,8 +87,14 @@ try:
     yolo_model = YOLO(YOLO_CKPT)
     print(f"YOLO loaded — {len(yolo_model.names)} classes")
 except FileNotFoundError:
-    print("YOLO model not found, using dummy detection")
-    yolo_model = None
+    print("YOLO model not found at checkpoint path. Trying generic pretrained YOLOv8n...")
+    try:
+        yolo_model = YOLO('yolov8n.pt')
+        print(f"Fallback YOLO loaded — {len(yolo_model.names)} classes")
+    except Exception as e:
+        print(f"Failed to load fallback YOLO: {e}")
+        print("Using dummy detection instead.")
+        yolo_model = None
 
 gat_model = None
 if os.path.exists(GNN_CKPT):
@@ -149,11 +155,27 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
         } for center in cluster_centers]
 
         comparison_stats = {
-            'method': 'traditional',
+            'algorithm': 'traditional',
+            'method': 'traditional',            'method': 'traditional',
             'n_zones': n_clusters,
             'n_macroblocks': None,
             'subdivided_zones': 0,
-            'combined_zones': 0
+            'combined_zones': 0,
+            'zone_types': ['traditional'] * n_clusters,            'zone_counts': {
+                'total': n_clusters,
+                'subdivided': 0,
+                'combined': 0
+            },
+            'congestion_metrics': {
+                'average': 0.0,  # Will be calculated later
+                'max': 0.0
+            },
+            'processing_details': {
+                'iterations': 1,
+                'thresholds': {
+                    'congestion': 0.0  # Not used in traditional method
+                }
+            }
         }
 
         return cluster_centers, zone_info, comparison_stats
@@ -274,12 +296,28 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
         cluster_centers = np.array([zone['centroid'] for zone in merged_zones])
 
         comparison_stats = {
+            'algorithm': 'macroblock',
             'method': 'macroblock',
             'n_zones': len(merged_zones),
             'n_macroblocks': n_macroblocks,
             'subdivided_zones': subdivided_count,
             'combined_zones': combined_count,
-            'zone_types': [zone['type'] for zone in merged_zones]
+            'zone_types': [zone['type'] for zone in merged_zones],
+            'zone_counts': {
+                'total': len(merged_zones),
+                'subdivided': subdivided_count,
+                'combined': combined_count
+            },
+            'congestion_metrics': {
+                'average': float(np.mean([zone['congestion'] for zone in merged_zones])),
+                'max': float(np.max([zone['congestion'] for zone in merged_zones]))
+            },
+            'processing_details': {
+                'iterations': 1,  # Single pass for now
+                'thresholds': {
+                    'congestion': CONGESTION_THRESHOLD_HIGH
+                }
+            }
         }
 
         return cluster_centers, merged_zones, comparison_stats
@@ -642,5 +680,5 @@ if __name__ == '__main__':
     print(f"Device  : {DEVICE}")
     print(f"YOLO    : {YOLO_CKPT}")
     print(f"GAT     : {GNN_CKPT}")
-    print(f"Access  : http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print(f"Access  : http://localhost:5002")
+    app.run(host='0.0.0.0', port=5002, debug=False)
