@@ -87,14 +87,8 @@ try:
     yolo_model = YOLO(YOLO_CKPT)
     print(f"YOLO loaded — {len(yolo_model.names)} classes")
 except FileNotFoundError:
-    print("YOLO model not found at checkpoint path. Trying generic pretrained YOLOv8n...")
-    try:
-        yolo_model = YOLO('yolov8n.pt')
-        print(f"Fallback YOLO loaded — {len(yolo_model.names)} classes")
-    except Exception as e:
-        print(f"Failed to load fallback YOLO: {e}")
-        print("Using dummy detection instead.")
-        yolo_model = None
+    print("YOLO model not found, using dummy detection")
+    yolo_model = None
 
 gat_model = None
 if os.path.exists(GNN_CKPT):
@@ -680,5 +674,5 @@ if __name__ == '__main__':
     print(f"Device  : {DEVICE}")
     print(f"YOLO    : {YOLO_CKPT}")
     print(f"GAT     : {GNN_CKPT}")
-    print(f"Access  : http://localhost:5002")
-    app.run(host='0.0.0.0', port=5002, debug=False)
+    print(f"Access  : http://localhost:5000")
+    app.run(host='0.0.0.0', port=5000, debug=False)
