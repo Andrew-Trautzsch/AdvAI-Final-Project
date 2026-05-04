@@ -198,7 +198,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             if not vehicles_in_macro:
                 continue
 
-                total_weight = sum(v['weight'] for v in vehicles_in_macro)
+            total_weight = sum(v['weight'] for v in vehicles_in_macro)
             weighted_centroid = np.average(
                 [v['center'] for v in vehicles_in_macro],
                 weights=[v['weight'] for v in vehicles_in_macro],
@@ -474,64 +474,31 @@ def process_video():
 
         # ── Build KNN graph with macroblock-aware edge weights ─────────────────
         if USE_MACROBLOCKS and macroblock_data:
-            # Use macroblocks for graph construction
+            # Use macroblocks for graph construction with KNN connectivity
             G = nx.Graph()
-            for macro in macroblock_data:
-                G.add_node(macro['id'], pos=[float(macro['centroid'][0]), float(macro['centroid'][1])])
+            for i, macro in enumerate(macroblock_data):
+                G.add_node(i, pos=[float(macro['centroid'][0]), float(macro['centroid'][1])])
 
-            # Group adjacent congested macroblocks
-            congested_groups = []
-            processed = set()
-
-            for i, macro1 in enumerate(macroblock_data):
-                if i in processed or macro1['congestion'] < 0.7:
-                    continue
-
-                group = [macro1]
-                processed.add(i)
-
-                # Find adjacent congested macroblocks
-                for j, macro2 in enumerate(macroblock_data):
-                    if j in processed or macro2['congestion'] < 0.7:
-                        continue
-
-                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
-                    if distance < 300:  # Adjacent threshold
-                        group.append(macro2)
-                        processed.add(j)
-
-                if len(group) > 1:
-                    congested_groups.append(group)
-
-            # Connect macroblocks with congestion-aware edge colors
+            # Connect macroblocks using KNN (like traditional method)
             for i in range(len(macroblock_data)):
-                for j in range(i+1, len(macroblock_data)):
-                    macro1 = macroblock_data[i]
-                    macro2 = macroblock_data[j]
-                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
-                    base_weight = 1.0 / (distance + 1e-6)
+                dists = []
+                for j in range(len(macroblock_data)):
+                    if i != j:
+                        distance = np.linalg.norm(macroblock_data[i]['centroid'] - macroblock_data[j]['centroid'])
+                        base_weight = 1.0 / (distance + 1e-6)
+                        dists.append((base_weight, j))
 
-                    # Check if both are in the same congested group
-                    in_same_group = False
-                    for group in congested_groups:
-                        if macro1 in group and macro2 in group:
-                            in_same_group = True
-                            break
-
-                    if in_same_group:
-                        # Stronger connection within congested groups
-                        weight = base_weight * 2.0
-                        G.add_edge(macro1['id'], macro2['id'], weight=weight, color='red', congested=True)
-                    else:
-                        # Normal connection
-                        weight = base_weight
-                        # Make edge red if either macroblock is congested
-                        is_congested = macro1['congestion'] > 0.7 or macro2['congestion'] > 0.7
-                        G.add_edge(macro1['id'], macro2['id'], weight=weight,
-                                 color='red' if is_congested else 'white', congested=is_congested)
+                # Connect to K nearest neighbors
+                dists.sort(reverse=True)
+                for weight, j in dists[:KNN_K]:
+                    if not G.has_edge(i, j):
+                        # Edge is red if both nodes are congested (> 0.7)
+                        is_red = (macroblock_data[i]['congestion'] > 0.7) and (macroblock_data[j]['congestion'] > 0.7)
+                        G.add_edge(i, j, weight=weight, color='red' if is_red else 'white', congested=is_red)
 
             cluster_centers = np.array([macro['centroid'] for macro in macroblock_data])
             zone_info = macroblock_data
+            n_clusters = len(macroblock_data)
         else:
             # Traditional method
             G = nx.Graph()
