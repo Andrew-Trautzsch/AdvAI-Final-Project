@@ -228,9 +228,55 @@ class TrafficDemo {
         document.getElementById('video-comparison').scrollIntoView({ behavior: 'smooth' });
     }
 
+    displayClusteringStats() {
+        if (!this.graphData || !this.graphData.clustering_stats) return;
+
+        const stats = this.graphData.clustering_stats;
+        const statsDiv = document.getElementById('clusteringStats');
+        const contentDiv = document.getElementById('statsContent');
+
+        let html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">';
+
+        // Algorithm type
+        html += `<div><strong>Algorithm:</strong> ${stats.algorithm || 'Unknown'}</div>`;
+
+        // Zone counts
+        if (stats.zone_counts) {
+            html += `<div><strong>Zones Created:</strong> ${stats.zone_counts.total || 0}</div>`;
+            if (stats.zone_counts.subdivided) {
+                html += `<div><strong>Subdivided Zones:</strong> ${stats.zone_counts.subdivided}</div>`;
+            }
+            if (stats.zone_counts.combined) {
+                html += `<div><strong>Combined Zones:</strong> ${stats.zone_counts.combined}</div>`;
+            }
+        }
+
+        // Congestion metrics
+        if (stats.congestion_metrics) {
+            html += `<div><strong>Avg Congestion:</strong> ${stats.congestion_metrics.average?.toFixed(2) || 'N/A'}</div>`;
+            html += `<div><strong>Max Congestion:</strong> ${stats.congestion_metrics.max?.toFixed(2) || 'N/A'}</div>`;
+        }
+
+        // Processing details
+        if (stats.processing_details) {
+            if (stats.processing_details.iterations) {
+                html += `<div><strong>Iterations:</strong> ${stats.processing_details.iterations}</div>`;
+            }
+            if (stats.processing_details.thresholds) {
+                html += `<div><strong>Congestion Threshold:</strong> ${stats.processing_details.thresholds.congestion || 'N/A'}</div>`;
+            }
+        }
+
+        html += '</div>';
+
+        contentDiv.innerHTML = html;
+        statsDiv.style.display = 'block';
+    }
+
     showGraphAnimation() {
         document.getElementById('graph-animation').classList.remove('hidden');
         document.getElementById('graph-animation').scrollIntoView({ behavior: 'smooth' });
+        this.displayClusteringStats();
         setTimeout(() => this.startGraphAnimation(), 200);
     }
 
