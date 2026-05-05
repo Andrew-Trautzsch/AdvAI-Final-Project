@@ -269,6 +269,10 @@ class TrafficDemo {
             }
         }
 
+        if (stats.n_macroblocks) {
+            html += `<div><strong>Macroblocks:</strong> ${stats.n_macroblocks}</div>`;
+        }
+
         html += '</div>';
 
         contentDiv.innerHTML = html;
@@ -343,6 +347,56 @@ class TrafficDemo {
         ctx.setLineDash([]);
     }
 
+    drawMacroblockStructure(ctx) {
+        if (!this.graphData.macroblock_structure) return;
+        const structure = this.graphData.macroblock_structure;
+
+        // Draw macroblock relationship links
+        structure.structure_links.forEach(link => {
+            const macro = structure.macroblocks.find(m => m.id === link.macro_id);
+            const zone  = structure.final_zones.find(z => z.id === link.zone_id);
+            if (!macro || !zone) return;
+            ctx.strokeStyle = 'rgba(92, 184, 92, 0.7)';
+            ctx.lineWidth   = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(macro.x, macro.y);
+            ctx.lineTo(zone.x, zone.y);
+            ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        // Draw final zone structure markers
+        structure.final_zones.forEach(zone => {
+            ctx.save();
+            const size = 8;
+            if (zone.type === 'subdivided') {
+                ctx.fillStyle = '#45b7d1';
+                ctx.beginPath();
+                ctx.moveTo(zone.x, zone.y - size);
+                ctx.lineTo(zone.x - size, zone.y + size);
+                ctx.lineTo(zone.x + size, zone.y + size);
+                ctx.closePath();
+                ctx.fill();
+            } else if (zone.type === 'combined') {
+                ctx.fillStyle = '#96ceb4';
+                ctx.beginPath();
+                ctx.moveTo(zone.x, zone.y - size);
+                ctx.lineTo(zone.x - size, zone.y);
+                ctx.lineTo(zone.x, zone.y + size);
+                ctx.lineTo(zone.x + size, zone.y);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                ctx.fillStyle = '#ff6b6b';
+                ctx.beginPath();
+                ctx.arc(zone.x, zone.y, size, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+            ctx.restore();
+        });
+    }
+
     drawNodes(ctx, p33, p66, min, max) {
         this.graphData.nodes.forEach(node => {
             ctx.beginPath();
@@ -359,7 +413,8 @@ class TrafficDemo {
             ctx.font         = 'bold 11px Arial';
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`Z${node.id}`, node.x, node.y - 4);
+            const label = node.macroblock_id !== undefined ? `M${node.macroblock_id}` : `Z${node.id}`;
+            ctx.fillText(label, node.x, node.y - 4);
             ctx.font = '9px Arial';
             ctx.fillText(rel, node.x, node.y + 7);
         });
@@ -389,6 +444,8 @@ class TrafficDemo {
             { color: '#e74c3c', label: `High (> ${fmt(p66)})` },
             { color: '#3498db', label: 'Source node' },
             { color: '#9b59b6', label: 'Destination node' },
+            { color: '#45b7d1', label: 'Subdivided macrozone' },
+            { color: '#96ceb4', label: 'Combined macrozone' },
         ].forEach((l, i) => {
             const y = ly + 28 + i * 17;
             ctx.beginPath(); ctx.arc(lx + 7, y, 6, 0, 2 * Math.PI);
@@ -407,6 +464,7 @@ class TrafficDemo {
         const { p33, p66, min, max } = this.getPercentileThresholds();
         this.drawBackground(ctx, canvas);
         this.drawEdges(ctx);
+        this.drawMacroblockStructure(ctx);
         this.drawNodes(ctx, p33, p66, min, max);
         this.drawLegend(ctx, p33, p66);
     }
@@ -419,6 +477,7 @@ class TrafficDemo {
         const { p33, p66, min, max } = this.getPercentileThresholds();
         this.drawBackground(ctx, canvas);
         this.drawEdges(ctx, gnnRoute, baselineRoute);
+        this.drawMacroblockStructure(ctx);
         this.drawNodes(ctx, p33, p66, min, max);
         this.drawLegend(ctx, p33, p66);
 

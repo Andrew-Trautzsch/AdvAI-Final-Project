@@ -462,8 +462,8 @@ def process_video():
         if result[0] is None:
             return jsonify({'error': result[2]['error']}), 400
 
-        cluster_centers, zone_info, comparison_stats, macroblock_data = result
-        n_clusters = len(cluster_centers)  # always reflects final merged zone count
+        cluster_centers, final_zones, comparison_stats, macroblock_data = result
+        n_clusters = len(cluster_centers)
 
         print(f"[{session_id}] Clustering complete:")
         print(f"  Method: {comparison_stats['method']}")
@@ -653,14 +653,111 @@ def process_video():
                 'size':       15
             })
 
+            # Add macroblock ID if available
+            if USE_MACROBLOCKS and macroblock_data and i < len(macroblock_data):
+                node_data['macroblock_id'] = macroblock_data[i]['id']
+
+            nodes.append(node_data)
+
+        graph_data = {
+            'nodes': nodes,
+            'edges': [],
+            'adj_gnn': {},
+            'adj_baseline': {},
+            'n_nodes': n_clusters
+        }
+
+        macroblock_structure = None
+        if USE_MACROBLOCKS and macroblock_data and final_zones is not None:
+            structure_macroblocks = []
+            for macro in macroblock_data:
+                structure_macroblocks.append({
+                    'id': macro['id'],
+                    'x':  float(pad + (macro['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
+                    'y':  float(pad + (macro['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
+                    'congestion': float(macro['congestion'])
+                })
+
+            structure_final_zones = []
+            structure_links = []
+            for zone_idx, zone in enumerate(final_zones):
+                zone_type = zone.get('type', 'zone')
+                structure_final_zones.append({
+                    'id': zone_idx,
+                    'x':  float(pad + (zone['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
+                    'y':  float(pad + (zone['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
+                    'type': zone_type,
+                    'parent_macro': zone.get('parent_macro')
+                })
+                if zone.get('parent_macro') is not None:
+                    structure_links.append({
+                        'macro_id': int(zone['parent_macro']),
+                        'zone_id':  zone_idx
+                    })
+
+            macroblock_structure = {
+                'macroblocks': structure_macroblocks,
+                'final_zones': structure_final_zones,
+                'structure_links': structure_links
+            }
+
+        graph_data = {
+            'nodes': nodes,
+            'edges': [],
+            'adj_gnn': {},
+            'adj_baseline': {},
+            'n_nodes': n_clusters
+        }
+
+        macroblock_structure = None
+        if USE_MACROBLOCKS and macroblock_data and final_zones is not None:
+            structure_macroblocks = []
+            for macro in macroblock_data:
+                structure_macroblocks.append({
+                    'id': macro['id'],
+                    'x':  float(pad + (macro['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
+                    'y':  float(pad + (macro['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
+                    'congestion': float(macro['congestion'])
+                })
+
+            structure_final_zones = []
+            structure_links = []
+            for zone_idx, zone in enumerate(final_zones):
+                zone_type = zone.get('type', 'zone')
+                structure_final_zones.append({
+                    'id': zone_idx,
+                    'x':  float(pad + (zone['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
+                    'y':  float(pad + (zone['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
+                    'type': zone_type,
+                    'parent_macro': zone.get('parent_macro')
+                })
+                if zone.get('parent_macro') is not None:
+                    structure_links.append({
+                        'macro_id': int(zone['parent_macro']),
+                        'zone_id':  zone_idx
+                    })
+
+            macroblock_structure = {
+                'macroblocks': structure_macroblocks,
+                'final_zones': structure_final_zones,
+                'structure_links': structure_links
+            }
+
         graph_edges = [{'src': int(u), 'dst': int(v)} for u, v in G.edges()]
-        adj   = defaultdict(list)
-        adj_b = defaultdict(list)
+        graph_data['edges'] = graph_edges
+        adj         = defaultdict(list)
+        adj_b       = defaultdict(list)
         for u, v in G.edges():
             adj[str(u)].append({'node': v, 'weight': float(gnn_scores[v])})
             adj[str(v)].append({'node': u, 'weight': float(gnn_scores[u])})
             adj_b[str(u)].append({'node': v, 'weight': 1.0})
             adj_b[str(v)].append({'node': u, 'weight': 1.0})
+
+        graph_data['adj_gnn'] = dict(adj)
+        graph_data['adj_baseline'] = dict(adj_b)
+
+        if macroblock_structure is not None:
+            graph_data['macroblock_structure'] = macroblock_structure
 
         print(f"[{session_id}] Done. {n_clusters} zones, {len(graph_edges)} edges.")
 
@@ -672,13 +769,7 @@ def process_video():
             'bg_image':         bg_url,
             'fps':              round(fps / FRAME_STEP, 1),
             'clustering_stats': comparison_stats,
-            'graph': {
-                'nodes':        nodes,
-                'edges':        graph_edges,
-                'adj_gnn':      dict(adj),
-                'adj_baseline': dict(adj_b),
-                'n_nodes':      n_clusters
-            }
+            'graph': graph_data
         })
 
     except Exception as e:
