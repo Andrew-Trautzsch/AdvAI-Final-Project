@@ -643,63 +643,22 @@ def process_video():
         x_range = xs.max() - xs.min() if xs.max() != xs.min() else 1
         y_range = ys.max() - ys.min() if ys.max() != ys.min() else 1
 
+        zone_info = final_zones
+
         nodes = []
         for i in range(n_clusters):
-            nodes.append({
+            node_data = {
                 'id':         i,
                 'x':          float(pad + (cluster_centers[i][0] - xs.min()) / x_range * (800 - 2*pad)),
                 'y':          float(pad + (cluster_centers[i][1] - ys.min()) / y_range * (600 - 2*pad)),
                 'congestion': float(gnn_scores[i]),
                 'size':       15
-            })
+            }
 
-            # Add macroblock ID if available
             if USE_MACROBLOCKS and macroblock_data and i < len(macroblock_data):
                 node_data['macroblock_id'] = macroblock_data[i]['id']
 
             nodes.append(node_data)
-
-        graph_data = {
-            'nodes': nodes,
-            'edges': [],
-            'adj_gnn': {},
-            'adj_baseline': {},
-            'n_nodes': n_clusters
-        }
-
-        macroblock_structure = None
-        if USE_MACROBLOCKS and macroblock_data and final_zones is not None:
-            structure_macroblocks = []
-            for macro in macroblock_data:
-                structure_macroblocks.append({
-                    'id': macro['id'],
-                    'x':  float(pad + (macro['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
-                    'y':  float(pad + (macro['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
-                    'congestion': float(macro['congestion'])
-                })
-
-            structure_final_zones = []
-            structure_links = []
-            for zone_idx, zone in enumerate(final_zones):
-                zone_type = zone.get('type', 'zone')
-                structure_final_zones.append({
-                    'id': zone_idx,
-                    'x':  float(pad + (zone['centroid'][0] - xs.min()) / x_range * (800 - 2*pad)),
-                    'y':  float(pad + (zone['centroid'][1] - ys.min()) / y_range * (600 - 2*pad)),
-                    'type': zone_type,
-                    'parent_macro': zone.get('parent_macro')
-                })
-                if zone.get('parent_macro') is not None:
-                    structure_links.append({
-                        'macro_id': int(zone['parent_macro']),
-                        'zone_id':  zone_idx
-                    })
-
-            macroblock_structure = {
-                'macroblocks': structure_macroblocks,
-                'final_zones': structure_final_zones,
-                'structure_links': structure_links
-            }
 
         graph_data = {
             'nodes': nodes,

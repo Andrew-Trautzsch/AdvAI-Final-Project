@@ -351,6 +351,21 @@ class TrafficDemo {
         if (!this.graphData.macroblock_structure) return;
         const structure = this.graphData.macroblock_structure;
 
+        // Draw macroblock nodes first
+        structure.macroblocks.forEach(macro => {
+            const size = 10;
+            ctx.fillStyle = '#ff6b6b';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.fillRect(macro.x - size, macro.y - size, size * 2, size * 2);
+            ctx.strokeRect(macro.x - size, macro.y - size, size * 2, size * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`M${macro.id}`, macro.x, macro.y);
+        });
+
         // Draw macroblock relationship links
         structure.structure_links.forEach(link => {
             const macro = structure.macroblocks.find(m => m.id === link.macro_id);
@@ -368,7 +383,6 @@ class TrafficDemo {
 
         // Draw final zone structure markers
         structure.final_zones.forEach(zone => {
-            ctx.save();
             const size = 8;
             if (zone.type === 'subdivided') {
                 ctx.fillStyle = '#45b7d1';
@@ -393,7 +407,13 @@ class TrafficDemo {
                 ctx.arc(zone.x, zone.y, size, 0, 2 * Math.PI);
                 ctx.fill();
             }
-            ctx.restore();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '9px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            if (zone.parent_macro !== undefined && zone.type !== 'macroblock') {
+                ctx.fillText(`M${zone.parent_macro}`, zone.x, zone.y + size + 2);
+            }
         });
     }
 
@@ -444,6 +464,7 @@ class TrafficDemo {
             { color: '#e74c3c', label: `High (> ${fmt(p66)})` },
             { color: '#3498db', label: 'Source node' },
             { color: '#9b59b6', label: 'Destination node' },
+            { color: '#ff6b6b', label: 'Macroblock center' },
             { color: '#45b7d1', label: 'Subdivided macrozone' },
             { color: '#96ceb4', label: 'Combined macrozone' },
         ].forEach((l, i) => {
