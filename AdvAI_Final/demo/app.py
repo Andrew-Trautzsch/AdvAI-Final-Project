@@ -126,48 +126,53 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
     """
     Perform clustering using either traditional k-means or new macroblock approach.
     Returns: (cluster_centers, zone_info, comparison_stats, macroblock_data)
+
+    all_detections: list of per-frame detection lists, used for congestion normalisation.
     """
+    # Total vehicle count across all frames — used to normalise congestion scores
+    total_vehicle_count = sum(len(frame) for frame in all_detections)
+
     if not use_macroblocks:
         # ── Traditional K-Means Clustering ─────────────────────────────────────
         all_centers = [v['center'] for v in all_vehicle_data]
         n_clusters = min(N_CLUSTERS, len(all_centers)) if all_centers else 0
 
         if n_clusters < 2:
-            return None, None, {'error': 'Not enough detections'}
+            return None, None, {'error': 'Not enough detections'}, None
 
         centers_array = np.array(all_centers)
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         kmeans.fit(centers_array)
         cluster_centers = kmeans.cluster_centers_
 
-        # Create zone info for traditional method
         zone_info = [{
             'centroid': center,
-            'vehicles': [],  # Not tracked in traditional method
-            'congestion': 0,  # Will be calculated later
+            'vehicles': [],
+            'congestion': 0,
             'type': 'traditional'
         } for center in cluster_centers]
 
         comparison_stats = {
             'algorithm': 'traditional',
-            'method': 'traditional',            'method': 'traditional',
+            'method': 'traditional',
             'n_zones': n_clusters,
             'n_macroblocks': None,
             'subdivided_zones': 0,
             'combined_zones': 0,
-            'zone_types': ['traditional'] * n_clusters,            'zone_counts': {
+            'zone_types': ['traditional'] * n_clusters,
+            'zone_counts': {
                 'total': n_clusters,
                 'subdivided': 0,
                 'combined': 0
             },
             'congestion_metrics': {
-                'average': 0.0,  # Will be calculated later
+                'average': 0.0,
                 'max': 0.0
             },
             'processing_details': {
                 'iterations': 1,
                 'thresholds': {
-                    'congestion': 0.0  # Not used in traditional method
+                    'congestion': 0.0
                 }
             }
         }
@@ -177,7 +182,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
     else:
         # ── Macroblock-based Clustering ───────────────────────────────────────
         if len(all_vehicle_data) < 2:
-            return None, None, {'error': 'Not enough detections'}
+            return None, None, {'error': 'Not enough detections'}, None
 
         # Step 1: Create initial macroblocks
         n_macroblocks = max(3, min(8, len(all_vehicle_data) // 10))
@@ -185,12 +190,13 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
 
         kmeans_macro = KMeans(n_clusters=n_macroblocks, random_state=42, n_init=10)
         macro_labels = kmeans_macro.fit_predict(centers_array)
-        macro_centers = kmeans_macro.cluster_centers_
 
         # Step 2: Calculate weighted centroids and congestion
+        # FIX: normalise by total vehicle count (not frame count) so congestion
+        # stays in [0, 1] and the subdivision threshold is meaningful.
         macroblock_data = []
         CONGESTION_THRESHOLD_HIGH = 0.7
-        CONGESTION_THRESHOLD_LOW = 0.2
+        CONGESTION_THRESHOLD_LOW  = 0.2
 
         for m in range(n_macroblocks):
             vehicles_in_macro = [v for v, label in zip(all_vehicle_data, macro_labels) if label == m]
@@ -204,7 +210,9 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                 weights=[v['weight'] for v in vehicles_in_macro],
                 axis=0
             )
-            congestion_level = total_weight / len(all_detections)
+            # Normalise against total vehicle weight across all frames
+            total_all_weight = sum(v['weight'] for v in all_vehicle_data)
+            congestion_level = total_weight / total_all_weight if total_all_weight > 0 else 0.0
 
             macroblock_data.append({
                 'id': m,
@@ -215,16 +223,17 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             })
 
         # Step 3: Subdivide high-congestion macroblocks
-        final_zones = []
+        final_zones    = []
         subdivided_count = 0
+        total_all_weight = sum(v['weight'] for v in all_vehicle_data)
 
         for macro in macroblock_data:
             if macro['congestion'] > CONGESTION_THRESHOLD_HIGH and len(macro['vehicles']) > 5:
                 n_subzones = min(3, len(macro['vehicles']) // 3)
                 if n_subzones >= 2:
                     sub_centers = np.array([v['center'] for v in macro['vehicles']])
-                    kmeans_sub = KMeans(n_clusters=n_subzones, random_state=42, n_init=10)
-                    sub_labels = kmeans_sub.fit_predict(sub_centers)
+                    kmeans_sub  = KMeans(n_clusters=n_subzones, random_state=42, n_init=10)
+                    sub_labels  = kmeans_sub.fit_predict(sub_centers)
 
                     for s in range(n_subzones):
                         sub_vehicles = [v for v, label in zip(macro['vehicles'], sub_labels) if label == s]
@@ -235,10 +244,10 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                                 axis=0
                             )
                             final_zones.append({
-                                'centroid': sub_centroid,
-                                'vehicles': sub_vehicles,
-                                'congestion': sum(v['weight'] for v in sub_vehicles) / len(all_detections),
-                                'type': 'subdivided',
+                                'centroid':     sub_centroid,
+                                'vehicles':     sub_vehicles,
+                                'congestion':   sum(v['weight'] for v in sub_vehicles) / total_all_weight if total_all_weight > 0 else 0.0,
+                                'type':         'subdivided',
                                 'parent_macro': macro['id']
                             })
                     subdivided_count += 1
@@ -248,8 +257,8 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                 final_zones.append(macro)
 
         # Step 4: Combine nearby low-congestion zones
-        merged_zones = []
-        processed = set()
+        merged_zones   = []
+        processed      = set()
         combined_count = 0
 
         for i, zone1 in enumerate(final_zones):
@@ -258,9 +267,8 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
 
             current_vehicles = zone1['vehicles'].copy()
             current_centroid = zone1['centroid']
-            current_type = zone1['type']
+            current_type     = zone1['type']
 
-            # Find nearby low-congestion zones to merge
             for j, zone2 in enumerate(final_zones):
                 if j in processed or j == i:
                     continue
@@ -269,7 +277,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                     distance = np.linalg.norm(zone1['centroid'] - zone2['centroid'])
                     if distance < 200:
                         current_vehicles.extend(zone2['vehicles'])
-                        if len(current_vehicles) > 0:
+                        if current_vehicles:
                             current_centroid = np.average(
                                 [v['center'] for v in current_vehicles],
                                 weights=[v['weight'] for v in current_vehicles],
@@ -280,40 +288,43 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                         combined_count += 1
 
             merged_zones.append({
-                'centroid': current_centroid,
-                'vehicles': current_vehicles,
-                'congestion': sum(v['weight'] for v in current_vehicles) / len(all_detections) if len(all_detections) > 0 else 0,
-                'type': current_type
+                'centroid':   current_centroid,
+                'vehicles':   current_vehicles,
+                'congestion': sum(v['weight'] for v in current_vehicles) / total_all_weight if total_all_weight > 0 else 0.0,
+                'type':       current_type
             })
             processed.add(i)
 
+        # cluster_centers reflects the final merged zones
         cluster_centers = np.array([zone['centroid'] for zone in merged_zones])
 
         comparison_stats = {
-            'algorithm': 'macroblock',
-            'method': 'macroblock',
-            'n_zones': len(merged_zones),
-            'n_macroblocks': n_macroblocks,
+            'algorithm':        'macroblock',
+            'method':           'macroblock',
+            'n_zones':          len(merged_zones),
+            'n_macroblocks':    n_macroblocks,
             'subdivided_zones': subdivided_count,
-            'combined_zones': combined_count,
-            'zone_types': [zone['type'] for zone in merged_zones],
+            'combined_zones':   combined_count,
+            'zone_types':       [zone['type'] for zone in merged_zones],
             'zone_counts': {
-                'total': len(merged_zones),
+                'total':      len(merged_zones),
                 'subdivided': subdivided_count,
-                'combined': combined_count
+                'combined':   combined_count
             },
             'congestion_metrics': {
                 'average': float(np.mean([zone['congestion'] for zone in merged_zones])),
-                'max': float(np.max([zone['congestion'] for zone in merged_zones]))
+                'max':     float(np.max( [zone['congestion'] for zone in merged_zones]))
             },
             'processing_details': {
-                'iterations': 1,  # Single pass for now
+                'iterations': 1,
                 'thresholds': {
                     'congestion': CONGESTION_THRESHOLD_HIGH
                 }
             }
         }
 
+        # Return merged_zones as zone_info; macroblock_data kept separately for
+        # graph construction (congestion-aware edge colouring).
         return cluster_centers, merged_zones, comparison_stats, macroblock_data
 
 @app.route('/')
@@ -346,7 +357,6 @@ def process_video():
         input_path = os.path.join(UPLOAD_DIR, f'{session_id}_input.mp4')
         video_file.save(input_path)
 
-        # Create output directories for frames
         orig_dir = os.path.join(OUTPUT_DIR, f'{session_id}_orig')
         yolo_dir = os.path.join(OUTPUT_DIR, f'{session_id}_yolo')
         os.makedirs(orig_dir, exist_ok=True)
@@ -375,7 +385,6 @@ def process_video():
             if not ret:
                 break
 
-            # Save every Nth frame for canvas animation
             if frame_idx % FRAME_STEP == 0:
                 orig_name = f'{saved_idx:04d}.jpg'
                 cv2.imwrite(os.path.join(orig_dir, orig_name), frame)
@@ -408,18 +417,13 @@ def process_video():
                                 (x1, max(y1 - 5, 10)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
             else:
-                # Dummy detection - create some fake vehicles for testing
-                ann_frame = frame.copy()
+                ann_frame  = frame.copy()
                 frame_dets = []
-                for i in range(np.random.randint(5, 15)):  # Random number of vehicles
-                    cx = np.random.randint(50, width - 50)
-                    cy = np.random.randint(50, height - 50)
+                for i in range(np.random.randint(5, 15)):
+                    cx    = np.random.randint(50, width - 50)
+                    cy    = np.random.randint(50, height - 50)
                     label = np.random.choice(list(WEIGHTS.keys()))
-                    frame_dets.append({
-                        'label': label, 'cx': cx, 'cy': cy,
-                        'weight': WEIGHTS[label]
-                    })
-                    # Draw dummy bounding box
+                    frame_dets.append({'label': label, 'cx': cx, 'cy': cy, 'weight': WEIGHTS[label]})
                     x1, y1 = cx - 20, cy - 10
                     x2, y2 = cx + 20, cy + 10
                     cv2.rectangle(ann_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -439,7 +443,6 @@ def process_video():
         cap.release()
         print(f"[{session_id}] Processed {frame_idx} frames, saved {saved_idx} for animation.")
 
-        # Save background image
         bg_url = None
         if bg_frame is not None:
             bg_path = os.path.join(OUTPUT_DIR, f'{session_id}_bg.jpg')
@@ -455,13 +458,12 @@ def process_video():
                     'weight': det['weight']
                 })
 
-        # Perform clustering
         result = perform_clustering(all_vehicle_data, all_detections, USE_MACROBLOCKS)
         if result[0] is None:
             return jsonify({'error': result[2]['error']}), 400
 
         cluster_centers, zone_info, comparison_stats, macroblock_data = result
-        n_clusters = len(cluster_centers)
+        n_clusters = len(cluster_centers)  # always reflects final merged zone count
 
         print(f"[{session_id}] Clustering complete:")
         print(f"  Method: {comparison_stats['method']}")
@@ -472,164 +474,120 @@ def process_video():
             print(f"  Combined: {comparison_stats['combined_zones']}")
             print(f"  Zone types: {comparison_stats['zone_types']}")
 
-        # ── Build KNN graph with macroblock-aware edge weights ─────────────────
-        if USE_MACROBLOCKS and macroblock_data:
-            # Use macroblocks for graph construction
-            G = nx.Graph()
-            for macro in macroblock_data:
-                G.add_node(macro['id'], pos=[float(macro['centroid'][0]), float(macro['centroid'][1])])
+        # ── Build KNN graph ────────────────────────────────────────────────────
+        # Both paths now operate on cluster_centers / zone_info (merged zones),
+        # keeping n_clusters consistent throughout.
+        G = nx.Graph()
+        for i in range(n_clusters):
+            G.add_node(i, pos=[float(cluster_centers[i][0]), float(cluster_centers[i][1])])
 
-            # Group adjacent congested macroblocks
+        if USE_MACROBLOCKS and macroblock_data:
+            # Group adjacent highly-congested raw macroblocks for edge colouring
             congested_groups = []
-            processed = set()
+            mb_processed = set()
 
             for i, macro1 in enumerate(macroblock_data):
-                if i in processed or macro1['congestion'] < 0.7:
+                if i in mb_processed or macro1['congestion'] < 0.7:
                     continue
-
                 group = [macro1]
-                processed.add(i)
-
-                # Find adjacent congested macroblocks
+                mb_processed.add(i)
                 for j, macro2 in enumerate(macroblock_data):
-                    if j in processed or macro2['congestion'] < 0.7:
+                    if j in mb_processed or macro2['congestion'] < 0.7:
                         continue
-
-                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
-                    if distance < 300:  # Adjacent threshold
+                    if np.linalg.norm(macro1['centroid'] - macro2['centroid']) < 300:
                         group.append(macro2)
-                        processed.add(j)
-
+                        mb_processed.add(j)
                 if len(group) > 1:
                     congested_groups.append(group)
 
-            # Connect macroblocks with congestion-aware edge colors
-            for i in range(len(macroblock_data)):
-                for j in range(i+1, len(macroblock_data)):
-                    macro1 = macroblock_data[i]
-                    macro2 = macroblock_data[j]
-                    distance = np.linalg.norm(macro1['centroid'] - macro2['centroid'])
-                    base_weight = 1.0 / (distance + 1e-6)
-
-                    # Check if both are in the same congested group
-                    in_same_group = False
-                    for group in congested_groups:
-                        if macro1 in group and macro2 in group:
-                            in_same_group = True
-                            break
-
-                    if in_same_group:
-                        # Stronger connection within congested groups
-                        weight = base_weight * 2.0
-                        G.add_edge(macro1['id'], macro2['id'], weight=weight, color='red', congested=True)
-                    else:
-                        # Normal connection
-                        weight = base_weight
-                        # Make edge red if either macroblock is congested
-                        is_congested = macro1['congestion'] > 0.7 or macro2['congestion'] > 0.7
-                        G.add_edge(macro1['id'], macro2['id'], weight=weight,
-                                 color='red' if is_congested else 'white', congested=is_congested)
-
-            cluster_centers = np.array([macro['centroid'] for macro in macroblock_data])
-            zone_info = macroblock_data
-        else:
-            # Traditional method
-            G = nx.Graph()
-            for i, zone in enumerate(zone_info if USE_MACROBLOCKS else [{'centroid': center} for center in cluster_centers]):
-                G.add_node(i, pos=[float(zone['centroid'][0]), float(zone['centroid'][1])])
-
-            # Connect zones with weights based on relationships and congestion
+            # KNN edges on merged zones with congestion-aware weights
             for i in range(n_clusters):
                 dists = []
                 for j in range(n_clusters):
-                    if i != j:
-                        distance = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
-                        base_weight = 1.0 / (distance + 1e-6)
-
-                        if USE_MACROBLOCKS:
-                            # Macroblock-aware weighting
-                            macro_boost = 1.2  # Default boost
-                            congestion_penalty = 1.0
-                            if zone_info[i]['congestion'] > 0.7 or zone_info[j]['congestion'] > 0.7:
-                                congestion_penalty = 0.7
-                            final_weight = base_weight * macro_boost * congestion_penalty
-                        else:
-                            # Traditional: simple inverse distance
-                            final_weight = base_weight
-
-                        dists.append((final_weight, j))
-
-                # Connect to K nearest neighbors
+                    if i == j:
+                        continue
+                    distance     = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
+                    base_weight  = 1.0 / (distance + 1e-6)
+                    cong_i       = zone_info[i]['congestion']
+                    cong_j       = zone_info[j]['congestion']
+                    penalty      = 0.7 if (cong_i > 0.7 or cong_j > 0.7) else 1.0
+                    dists.append((base_weight * 1.2 * penalty, j))
                 dists.sort(reverse=True)
                 for weight, j in dists[:KNN_K]:
                     if not G.has_edge(i, j):
-                        G.add_edge(i, j, weight=weight)
+                        cong_i = zone_info[i]['congestion']
+                        cong_j = zone_info[j]['congestion']
+                        is_congested = cong_i > 0.7 or cong_j > 0.7
+                        G.add_edge(i, j, weight=weight,
+                                   color='red' if is_congested else 'white',
+                                   congested=is_congested)
+        else:
+            # Traditional: simple inverse-distance KNN
+            for i in range(n_clusters):
+                dists = []
+                for j in range(n_clusters):
+                    if i == j:
+                        continue
+                    distance = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
+                    dists.append((1.0 / (distance + 1e-6), j))
+                dists.sort(reverse=True)
+                for weight, j in dists[:KNN_K]:
+                    if not G.has_edge(i, j):
+                        G.add_edge(i, j, weight=weight, color='white', congested=False)
 
-        # Ensure graph connectivity with minimum spanning tree if needed
+        # MST fallback for connectivity
         if not nx.is_connected(G):
             G_full = nx.Graph()
             G_full.add_nodes_from(range(n_clusters))
             for i in range(n_clusters):
-                for j in range(i+1, n_clusters):
+                for j in range(i + 1, n_clusters):
                     distance = np.linalg.norm(cluster_centers[i] - cluster_centers[j])
-                    # Use distance as weight for MST (shorter edges preferred)
                     G_full.add_edge(i, j, weight=distance)
-
             mst = nx.minimum_spanning_tree(G_full, algorithm='kruskal')
             for u, v in mst.edges():
                 if not G.has_edge(u, v):
                     distance = np.linalg.norm(cluster_centers[u] - cluster_centers[v])
-                    G.add_edge(u, v, weight=1.0/(distance + 1e-6))  # Convert back to similarity
+                    G.add_edge(u, v, weight=1.0 / (distance + 1e-6), color='white', congested=False)
 
         # ── Build congestion time series ───────────────────────────────────────
         raw_scores = np.zeros((n_clusters, len(all_detections)))
 
         if USE_MACROBLOCKS:
-            # Macroblock method: Use zone membership from clustering
-            for zone_idx, zone in enumerate(zone_info):
-                for t in range(len(all_detections)):
-                    frame_vehicles = all_detections[t]
+            for zone_idx in range(n_clusters):
+                for t, frame_vehicles in enumerate(all_detections):
                     zone_congestion = 0
-
                     for det in frame_vehicles:
-                        vehicle_center = np.array([det['cx'], det['cy']])
-                        distances_to_zones = [np.linalg.norm(vehicle_center - z['centroid']) for z in zone_info]
-                        nearest_zone = np.argmin(distances_to_zones)
-
-                        if nearest_zone == zone_idx:
+                        vehicle_center     = np.array([det['cx'], det['cy']])
+                        distances_to_zones = [np.linalg.norm(vehicle_center - cluster_centers[z])
+                                              for z in range(n_clusters)]
+                        if np.argmin(distances_to_zones) == zone_idx:
                             zone_congestion += det['weight']
-
                     raw_scores[zone_idx, t] = zone_congestion
         else:
-            # Traditional method: Simple distance-based assignment
             for t, frame_dets in enumerate(all_detections):
                 for det in frame_dets:
-                    dists = [np.linalg.norm(np.array([det['cx'], det['cy']]) - cluster_centers[z])
-                             for z in range(n_clusters)]
+                    dists   = [np.linalg.norm(np.array([det['cx'], det['cy']]) - cluster_centers[z])
+                               for z in range(n_clusters)]
                     nearest = int(np.argmin(dists))
                     raw_scores[nearest, t] += det['weight']
 
-        # Normalize scores
         max_val = raw_scores.max()
         if max_val > 0:
             raw_scores = raw_scores / max_val
 
         # ── Generate animated graph overlay frames ─────────────────────────────
-        # Second pass over saved original frames, draw edges and congestion
-        # colored nodes directly on the image using actual pixel coordinates
         graph_dir        = os.path.join(OUTPUT_DIR, f'{session_id}_graph')
         graph_frame_urls = []
         os.makedirs(graph_dir, exist_ok=True)
 
-        # Global percentile thresholds across all timesteps and zones
         all_vals = raw_scores.flatten()
         p33_val  = float(np.percentile(all_vals, 33))
         p66_val  = float(np.percentile(all_vals, 66))
 
         def zone_bgr(score):
-            if score > p66_val: return (0,   50,  220)   # red
-            if score > p33_val: return (0,  165,  255)   # orange
-            return               (80,  200,   0)          # green
+            if score > p66_val: return (0,  50, 220)
+            if score > p33_val: return (0, 165, 255)
+            return                     (80, 200,  0)
 
         graph_edges_list = list(G.edges())
 
@@ -640,39 +598,22 @@ def process_video():
             if frame is None:
                 continue
 
-            # Draw edges
             for u, v in graph_edges_list:
-                p1 = (int(cluster_centers[u][0]), int(cluster_centers[u][1]))
-                p2 = (int(cluster_centers[v][0]), int(cluster_centers[v][1]))
-
-                # Get edge color (default to white if not specified)
-                edge_data = G.get_edge_data(u, v, {})
-                edge_color = edge_data.get('color', 'white')
-
-                if edge_color == 'red':
-                    color = (0, 0, 255)  # Red for congested edges
-                else:
-                    color = (255, 255, 255)  # White for normal edges
-
+                p1         = (int(cluster_centers[u][0]), int(cluster_centers[u][1]))
+                p2         = (int(cluster_centers[v][0]), int(cluster_centers[v][1]))
+                edge_color = G.get_edge_data(u, v, {}).get('color', 'white')
+                color      = (0, 0, 255) if edge_color == 'red' else (255, 255, 255)
                 cv2.line(frame, p1, p2, color, 2, cv2.LINE_AA)
 
-            # Draw nodes colored by current timestep congestion
             zone_scores = raw_scores[:, t]
             for z in range(n_clusters):
                 cx, cy = int(cluster_centers[z][0]), int(cluster_centers[z][1])
                 color  = zone_bgr(zone_scores[z])
                 cv2.circle(frame, (cx, cy), 16, color, -1)
                 cv2.circle(frame, (cx, cy), 16, (255, 255, 255), 2, cv2.LINE_AA)
-
-                # Use macroblock ID if available, otherwise zone number
-                if USE_MACROBLOCKS and macroblock_data and z < len(macroblock_data):
-                    label = f'M{macroblock_data[z]["id"]}'
-                else:
-                    label = f'Z{z}'
-
+                label = f'Z{z}'
                 cv2.putText(frame, label, (cx - 9, cy + 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38,
-                            (255, 255, 255), 1, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
 
             graph_name = f'{saved_i:04d}.jpg'
             cv2.imwrite(os.path.join(graph_dir, graph_name), frame)
@@ -704,23 +645,17 @@ def process_video():
 
         nodes = []
         for i in range(n_clusters):
-            node_data = {
+            nodes.append({
                 'id':         i,
                 'x':          float(pad + (cluster_centers[i][0] - xs.min()) / x_range * (800 - 2*pad)),
                 'y':          float(pad + (cluster_centers[i][1] - ys.min()) / y_range * (600 - 2*pad)),
                 'congestion': float(gnn_scores[i]),
                 'size':       15
-            }
-
-            # Add macroblock ID if available
-            if USE_MACROBLOCKS and macroblock_data and i < len(macroblock_data):
-                node_data['macroblock_id'] = macroblock_data[i]['id']
-
-            nodes.append(node_data)
+            })
 
         graph_edges = [{'src': int(u), 'dst': int(v)} for u, v in G.edges()]
-        adj         = defaultdict(list)
-        adj_b       = defaultdict(list)
+        adj   = defaultdict(list)
+        adj_b = defaultdict(list)
         for u, v in G.edges():
             adj[str(u)].append({'node': v, 'weight': float(gnn_scores[v])})
             adj[str(v)].append({'node': u, 'weight': float(gnn_scores[u])})
@@ -730,12 +665,12 @@ def process_video():
         print(f"[{session_id}] Done. {n_clusters} zones, {len(graph_edges)} edges.")
 
         return jsonify({
-            'session_id':    session_id,
-            'orig_frames':   orig_frame_urls,
-            'yolo_frames':   yolo_frame_urls,
-            'graph_frames':  graph_frame_urls,
-            'bg_image':      bg_url,
-            'fps':           round(fps / FRAME_STEP, 1),
+            'session_id':       session_id,
+            'orig_frames':      orig_frame_urls,
+            'yolo_frames':      yolo_frame_urls,
+            'graph_frames':     graph_frame_urls,
+            'bg_image':         bg_url,
+            'fps':              round(fps / FRAME_STEP, 1),
             'clustering_stats': comparison_stats,
             'graph': {
                 'nodes':        nodes,
