@@ -198,7 +198,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             if not vehicles_in_macro:
                 continue
 
-                total_weight = sum(v['weight'] for v in vehicles_in_macro)
+            total_weight = sum(v['weight'] for v in vehicles_in_macro)
             weighted_centroid = np.average(
                 [v['center'] for v in vehicles_in_macro],
                 weights=[v['weight'] for v in vehicles_in_macro],
