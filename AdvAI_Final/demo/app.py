@@ -195,8 +195,8 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
         # FIX: normalise by total vehicle count (not frame count) so congestion
         # stays in [0, 1] and the subdivision threshold is meaningful.
         macroblock_data = []
-        CONGESTION_THRESHOLD_HIGH = 0.7
-        CONGESTION_THRESHOLD_LOW  = 0.2
+        CONGESTION_THRESHOLD_HIGH = 0.3  # Lower threshold for subdivision
+        CONGESTION_THRESHOLD_LOW  = 0.1   # Lower threshold for combining
 
         for m in range(n_macroblocks):
             vehicles_in_macro = [v for v, label in zip(all_vehicle_data, macro_labels) if label == m]
@@ -228,7 +228,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
         total_all_weight = sum(v['weight'] for v in all_vehicle_data)
 
         for macro in macroblock_data:
-            if macro['congestion'] > CONGESTION_THRESHOLD_HIGH and len(macro['vehicles']) > 5:
+            if macro['congestion'] > CONGESTION_THRESHOLD_HIGH and len(macro['vehicles']) > 3:
                 n_subzones = min(3, len(macro['vehicles']) // 3)
                 if n_subzones >= 2:
                     sub_centers = np.array([v['center'] for v in macro['vehicles']])
@@ -273,9 +273,16 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                 if j in processed or j == i:
                     continue
 
+                # Don't combine subdivided zones with each other
+                if zone1['type'] == 'subdivided' and zone2['type'] == 'subdivided':
+                    continue
+                # Don't combine two macroblocks
+                if zone1['type'] == 'macroblock' and zone2['type'] == 'macroblock':
+                    continue
+
                 if zone2['congestion'] < CONGESTION_THRESHOLD_LOW:
                     distance = np.linalg.norm(zone1['centroid'] - zone2['centroid'])
-                    if distance < 200:
+                    if distance < 150:
                         current_vehicles.extend(zone2['vehicles'])
                         if current_vehicles:
                             current_centroid = np.average(
@@ -283,7 +290,9 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
                                 weights=[v['weight'] for v in current_vehicles],
                                 axis=0
                             )
-                        current_type = 'combined' if current_type != 'subdivided' else current_type
+                        # Only mark as combined if neither zone is subdivided
+                        if zone1['type'] != 'subdivided':
+                            current_type = 'combined'
                         processed.add(j)
                         combined_count += 1
 
@@ -323,9 +332,16 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             }
         }
 
-        # Return merged_zones as zone_info; macroblock_data kept separately for
-        # graph construction (congestion-aware edge colouring).
-        return cluster_centers, merged_zones, comparison_stats, macroblock_data
+        # Return merged_zones for main graph, final_zones for macroblock structure
+        
+        # Debug: count zone types
+        type_counts = {}
+        for zone in merged_zones:
+            t = zone['type']
+            type_counts[t] = type_counts.get(t, 0) + 1
+        print(f"Demo zone types: {type_counts}")
+        
+        return cluster_centers, final_zones, merged_zones, comparison_stats, macroblock_data
 
 @app.route('/')
 def index():
@@ -460,9 +476,10 @@ def process_video():
 
         result = perform_clustering(all_vehicle_data, all_detections, USE_MACROBLOCKS)
         if result[0] is None:
-            return jsonify({'error': result[2]['error']}), 400
+            return jsonify({'error': result[3]['error']}), 400
 
-        cluster_centers, final_zones, comparison_stats, macroblock_data = result
+        cluster_centers, final_zones_vis, merged_zones, comparison_stats, macroblock_data = result
+        zone_info = merged_zones  # Use merged zones for main graph
         n_clusters = len(cluster_centers)
 
         print(f"[{session_id}] Clustering complete:")
@@ -643,8 +660,6 @@ def process_video():
         x_range = xs.max() - xs.min() if xs.max() != xs.min() else 1
         y_range = ys.max() - ys.min() if ys.max() != ys.min() else 1
 
-        zone_info = final_zones
-
         nodes = []
         for i in range(n_clusters):
             node_data = {
@@ -669,7 +684,7 @@ def process_video():
         }
 
         macroblock_structure = None
-        if USE_MACROBLOCKS and macroblock_data and final_zones is not None:
+        if USE_MACROBLOCKS and macroblock_data and final_zones_vis is not None:
             structure_macroblocks = []
             for macro in macroblock_data:
                 structure_macroblocks.append({
@@ -681,7 +696,7 @@ def process_video():
 
             structure_final_zones = []
             structure_links = []
-            for zone_idx, zone in enumerate(final_zones):
+            for zone_idx, zone in enumerate(final_zones_vis):
                 zone_type = zone.get('type', 'zone')
                 structure_final_zones.append({
                     'id': zone_idx,
