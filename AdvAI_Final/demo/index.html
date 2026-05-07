@@ -15,6 +15,21 @@
         </p>
     </header>
 
+    <!-- Version Toggle -->
+    <div id="version-banner">
+        <div id="version-toggle">
+            <span class="version-label">Model Version:</span>
+            <div class="toggle-btn-group">
+                <button id="btnOriginal" class="toggle-btn active" onclick="window.demo.setVersion('original')">
+                    Original
+                </button>
+                <button id="btnMacroblock" class="toggle-btn" onclick="window.demo.setVersion('macroblock')">
+                    Macroblock
+                </button>
+            </div>
+        </div>
+    </div>
+
     <main>
         <!-- Upload -->
         <section id="file-upload">
@@ -62,10 +77,6 @@
                <span style="color:#f39c12">&#9632; Medium</span>
                <span style="color:#e74c3c">&#9632; High</span>
             </p>
-            <div id="clusteringStats" class="clustering-info" style="display:none; margin:1rem 0; padding:1rem; background:#f8f9fa; border-radius:8px; border-left:4px solid #007bff;">
-                <h4>Clustering Analysis</h4>
-                <div id="statsContent"></div>
-            </div>
             <div style="display:flex; justify-content:center;">
                 <div style="text-align:center;">
                     <canvas id="graphAnimCanvas" width="800" height="450"></canvas>

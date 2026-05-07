@@ -326,6 +326,112 @@ canvas {
     max-width: 48%;
 }
 
+/* Version Toggle Banner */
+#version-banner {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    padding: 0.85rem 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+#version-toggle {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.version-label {
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+}
+
+.toggle-btn-group {
+    display: flex;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.toggle-btn {
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    border: none;
+    padding: 0.45rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    transform: none;
+    box-shadow: none;
+    min-width: 130px;
+}
+
+.toggle-btn:hover {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    transform: none;
+    box-shadow: none;
+}
+
+.toggle-btn.active {
+    background: white;
+    color: #2c3e50;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.toggle-btn.active:hover {
+    background: white;
+    color: #2c3e50;
+    transform: none;
+}
+
+.version-sub {
+    font-size: 0.7rem;
+    font-weight: 400;
+    opacity: 0.75;
+    margin-top: 1px;
+}
+
+.toggle-btn.active .version-sub {
+    opacity: 0.6;
+}
+
+.active-badge {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.active-badge.original {
+    background: rgba(52, 152, 219, 0.3);
+    color: #fff;
+    border: 1px solid rgba(52,152,219,0.5);
+}
+
+.active-badge.macroblock {
+    background: rgba(46, 204, 113, 0.3);
+    color: #fff;
+    border: 1px solid rgba(46,204,113,0.5);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .video-container {

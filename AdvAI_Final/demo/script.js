@@ -9,6 +9,7 @@ class TrafficDemo {
         this.videoFile      = null;
         this.sessionId      = null;
         this.bgImage        = null;
+        this.activeVersion  = 'original'; // 'original' | 'macroblock'
 
         // Step 1 animation (original + yolo)
         this.origFrames  = [];
@@ -23,6 +24,32 @@ class TrafficDemo {
         this.graphAnimTimer = null;
 
         this.initializeEventListeners();
+    }
+
+    setVersion(version) {
+        if (this.activeVersion === version) return;
+        this.activeVersion = version;
+
+        // Update toggle buttons
+        document.getElementById('btnOriginal').classList.toggle('active',   version === 'original');
+        document.getElementById('btnMacroblock').classList.toggle('active', version === 'macroblock');
+
+        // Reset any in-progress results so the user knows to re-process
+        const sections = ['video-comparison', 'graph-animation', 'routing-demo'];
+        sections.forEach(id => document.getElementById(id).classList.add('hidden'));
+        this.graphData       = null;
+        this.clusteringStats = null;
+        this.origFrames      = [];
+        this.yoloFrames      = [];
+        this.graphFrames     = [];
+        this.stopAnimation();
+        this.stopGraphAnimation();
+
+        this.showStatus(
+            `Switched to ${version === 'macroblock' ? 'Macroblock' : 'Original'} mode. ` +
+            `Re-process your video to apply.`,
+            'info'
+        );
     }
 
     initializeEventListeners() {
@@ -81,6 +108,13 @@ class TrafficDemo {
         try {
             const formData = new FormData();
             formData.append('video', this.videoFile);
+            formData.append('version', this.activeVersion);
+            // Tell the backend which model weights to load
+            formData.append('model_weights',
+                this.activeVersion === 'macroblock'
+                    ? 'gnn_routing_best.pt'
+                    : 'gnn_routing_best_previous.pt'
+            );
 
             const response = await fetch('process', { method: 'POST', body: formData });
 
@@ -231,52 +265,7 @@ class TrafficDemo {
     }
 
     displayClusteringStats() {
-        const stats = this.clusteringStats;
-        if (!stats) return;
-
-        const statsDiv = document.getElementById('clusteringStats');
-        const contentDiv = document.getElementById('statsContent');
-
-        let html = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">';
-
-        // Algorithm type
-        html += `<div><strong>Algorithm:</strong> ${stats.algorithm || 'Unknown'}</div>`;
-
-        // Zone counts
-        if (stats.zone_counts) {
-            html += `<div><strong>Zones Created:</strong> ${stats.zone_counts.total || 0}</div>`;
-            if (stats.zone_counts.subdivided) {
-                html += `<div><strong>Subdivided Zones:</strong> ${stats.zone_counts.subdivided}</div>`;
-            }
-            if (stats.zone_counts.combined) {
-                html += `<div><strong>Combined Zones:</strong> ${stats.zone_counts.combined}</div>`;
-            }
-        }
-
-        // Congestion metrics
-        if (stats.congestion_metrics) {
-            html += `<div><strong>Avg Congestion:</strong> ${stats.congestion_metrics.average?.toFixed(2) || 'N/A'}</div>`;
-            html += `<div><strong>Max Congestion:</strong> ${stats.congestion_metrics.max?.toFixed(2) || 'N/A'}</div>`;
-        }
-
-        // Processing details
-        if (stats.processing_details) {
-            if (stats.processing_details.iterations) {
-                html += `<div><strong>Iterations:</strong> ${stats.processing_details.iterations}</div>`;
-            }
-            if (stats.processing_details.thresholds) {
-                html += `<div><strong>Congestion Threshold:</strong> ${stats.processing_details.thresholds.congestion || 'N/A'}</div>`;
-            }
-        }
-
-        if (stats.n_macroblocks) {
-            html += `<div><strong>Macroblocks:</strong> ${stats.n_macroblocks}</div>`;
-        }
-
-        html += '</div>';
-
-        contentDiv.innerHTML = html;
-        statsDiv.style.display = 'block';
+        // Stats box removed from UI
     }
 
     showGraphAnimation() {
@@ -464,9 +453,6 @@ class TrafficDemo {
             { color: '#e74c3c', label: `High (> ${fmt(p66)})` },
             { color: '#3498db', label: 'Source node' },
             { color: '#9b59b6', label: 'Destination node' },
-            { color: '#ff6b6b', label: 'Macroblock center' },
-            { color: '#45b7d1', label: 'Subdivided macrozone' },
-            { color: '#96ceb4', label: 'Combined macrozone' },
         ].forEach((l, i) => {
             const y = ly + 28 + i * 17;
             ctx.beginPath(); ctx.arc(lx + 7, y, 6, 0, 2 * Math.PI);
@@ -640,4 +626,4 @@ class TrafficDemo {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => { new TrafficDemo(); });
+document.addEventListener('DOMContentLoaded', () => { window.demo = new TrafficDemo(); });

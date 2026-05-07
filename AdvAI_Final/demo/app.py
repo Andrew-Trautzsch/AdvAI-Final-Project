@@ -138,7 +138,7 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
         n_clusters = min(N_CLUSTERS, len(all_centers)) if all_centers else 0
 
         if n_clusters < 2:
-            return None, None, {'error': 'Not enough detections'}, None
+            return None, None, None, {'error': 'Not enough detections'}, None
 
         centers_array = np.array(all_centers)
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
@@ -177,12 +177,12 @@ def perform_clustering(all_vehicle_data, all_detections, use_macroblocks=True):
             }
         }
 
-        return cluster_centers, zone_info, comparison_stats, None
+        return cluster_centers, zone_info, None, comparison_stats, None
 
     else:
         # ── Macroblock-based Clustering ───────────────────────────────────────
         if len(all_vehicle_data) < 2:
-            return None, None, {'error': 'Not enough detections'}, None
+            return None, None, None, {'error': 'Not enough detections'}, None
 
         # Step 1: Create initial macroblocks
         n_macroblocks = max(3, min(8, len(all_vehicle_data) // 10))
@@ -370,6 +370,25 @@ def process_video():
             return jsonify({'error': 'No file selected'}), 400
 
         session_id = str(uuid.uuid4())[:8]
+
+        # Determine version from the frontend toggle
+        version        = request.form.get('version', 'macroblock')
+        use_macroblocks = (version == 'macroblock')
+        ckpt_name      = 'gnn_routing_best.pt' if use_macroblocks else 'gnn_routing_best_previous.pt'
+        ckpt_path      = os.path.join(MODELS_DIR, ckpt_name)
+        print(f"[{session_id}] Version={version}  weights={ckpt_name}  macroblocks={use_macroblocks}")
+
+        # Load the correct GAT weights for this request
+        if os.path.exists(ckpt_path):
+            try:
+                gat_model.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
+                gat_model.eval()
+                print(f"[{session_id}] GAT weights loaded: {ckpt_name}")
+            except Exception as e:
+                print(f"[{session_id}] WARNING: could not load {ckpt_name}: {e}")
+        else:
+            print(f"[{session_id}] WARNING: checkpoint not found: {ckpt_path}")
+
         input_path = os.path.join(UPLOAD_DIR, f'{session_id}_input.mp4')
         video_file.save(input_path)
 
@@ -474,7 +493,7 @@ def process_video():
                     'weight': det['weight']
                 })
 
-        result = perform_clustering(all_vehicle_data, all_detections, USE_MACROBLOCKS)
+        result = perform_clustering(all_vehicle_data, all_detections, use_macroblocks)
         if result[0] is None:
             return jsonify({'error': result[3]['error']}), 400
 
@@ -498,7 +517,7 @@ def process_video():
         for i in range(n_clusters):
             G.add_node(i, pos=[float(cluster_centers[i][0]), float(cluster_centers[i][1])])
 
-        if USE_MACROBLOCKS and macroblock_data:
+        if use_macroblocks and macroblock_data:
             # Group adjacent highly-congested raw macroblocks for edge colouring
             congested_groups = []
             mb_processed = set()
@@ -569,7 +588,7 @@ def process_video():
         # ── Build congestion time series ───────────────────────────────────────
         raw_scores = np.zeros((n_clusters, len(all_detections)))
 
-        if USE_MACROBLOCKS:
+        if use_macroblocks:
             for zone_idx in range(n_clusters):
                 for t, frame_vehicles in enumerate(all_detections):
                     zone_congestion = 0
@@ -670,7 +689,7 @@ def process_video():
                 'size':       15
             }
 
-            if USE_MACROBLOCKS and macroblock_data and i < len(macroblock_data):
+            if use_macroblocks and macroblock_data and i < len(macroblock_data):
                 node_data['macroblock_id'] = macroblock_data[i]['id']
 
             nodes.append(node_data)
@@ -684,7 +703,7 @@ def process_video():
         }
 
         macroblock_structure = None
-        if USE_MACROBLOCKS and macroblock_data and final_zones_vis is not None:
+        if use_macroblocks and macroblock_data and final_zones_vis is not None:
             structure_macroblocks = []
             for macro in macroblock_data:
                 structure_macroblocks.append({
